@@ -1,0 +1,181 @@
+---
+title: "Preprocessing for MACS2"
+author: "Sergio Manzano"
+date: "23-01-2026"
+output:
+  BiocStyle::html_document:
+    theme: spacelab
+    number_sections: true
+    toc_float: true
+    toc_depth: 5
+    
+---
+
+# Basic info
+
+## Adjust the file paths to those containing your fragments.tsv files output by cellranger, and define your coorresponding sample names
+
+```{r}
+
+library(ArchR)
+library(dplyr)
+library(Rcpp)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+library(clusterProfiler)
+
+
+addArchRGenome("hg38")
+
+
+#--- select input fragments files
+inputFiles <- c(file.path("/path/to/cellranger/outs/atac_fragments.tsv.gz"),
+                file.path("/path/to/cellranger/outs/atac_fragments.tsv.gz"),
+                file.path("/path/to/cellranger/outs/atac_fragments.tsv.gz"),
+                file.path("/path/to/cellranger/outs/atac_fragments.tsv.gz"),
+                file.path("/path/to/cellranger/outs/atac_fragments.tsv.gz"),
+                file.path("/path/to/cellranger/outs/atac_fragments.tsv.gz"),
+                file.path("/path/to/cellranger/outs/atac_fragments.tsv.gz"),
+                file.path("/path/to/cellranger/outs/atac_fragments.tsv.gz"))
+
+#--- set sample names
+names(inputFiles) <- c("LOY_E6b", "LOY_D11", "LOY_F10", "WT_C1", "LOY_E5b", "WT_A3", "WT_C8", "WT_D5")
+
+
+
+
+```
+
+## Create arrow files
+
+```{r}
+
+ArrowFiles <- createArrowFiles(
+  inputFiles = inputFiles,
+  sampleNames = names(inputFiles),
+  filterTSS = 3, 
+  filterFrags = 1000,
+  addTileMat = TRUE,
+  addGeneScoreMat = TRUE
+)
+
+# check
+ArrowFiles
+
+#--- add doublet scores
+doubScores <- addDoubletScores(
+  input = ArrowFiles,
+  k = 10, # Refers to how many cells near a "pseudo-doublet" to count.
+  knnMethod = "UMAP", # Refers to the embedding to use for nearest neighbor search with doublet projection.
+  LSIMethod = 1
+)
+
+```
+
+## Create ArchR project
+
+```{r}
+
+proj <- ArchRProject(
+  ArrowFiles = ArrowFiles,
+  outputDirectory = "path/to/ArchR_rerun/ArchRproject_rerun",
+  copyArrows = TRUE # This is recommend so that if you modify the Arrow files you have an original copy for later usage.
+)
+
+# check
+proj
+
+```
+
+
+### General QC
+
+```{r}
+
+# #--- filter doublets
+proj <- filterDoublets(proj)
+
+# #--- check cell quality to see if further filtering required
+df <- getCellColData(proj, select = c("log10(nFrags)", "TSSEnrichment"))
+
+p <- ggPoint(
+  x = df[,1],
+  y = df[,2],
+  colorDensity = TRUE,
+  continuousSet = "sambaNight",
+  xlabel = "Log10 Unique Fragments",
+  ylabel = "TSS Enrichment",
+  xlim = c(log10(500), quantile(df[,1], probs = 0.99)),
+  ylim = c(0, quantile(df[,2], probs = 0.99))
+) + geom_hline(yintercept = 3, lty = "dashed") + geom_vline(xintercept = 3, lty = "dashed")
+
+p
+
+```
+
+
+## Run iterative LSI dimensionality reduction
+
+```{r}
+
+proj <- addIterativeLSI(
+  ArchRProj = proj,
+  useMatrix = "TileMatrix",
+  name = "IterativeLSI",
+  iterations = 2,
+  clusterParams = list( #See Seurat::FindClusters
+    resolution = c(0.2),
+    sampleCells = 10000,
+    n.start = 10),
+  varFeatures = 25000, # defaults to 25000
+  dimsToUse = 1:20, # defaults 1:30
+  force = T
+)
+
+#--- clustering
+proj <- addClusters(
+  input = proj,
+  reducedDims = "IterativeLSI",
+  method = "Seurat",
+  name = "Clusters",
+  resolution = 0.8, force=T
+)
+
+head(proj$Clusters)
+table(proj$Clusters)
+
+#--- add umap
+proj <- addUMAP(
+  ArchRProj = proj,
+  reducedDims = "IterativeLSI",
+  name = "UMAP",
+  nNeighbors = 30,
+  minDist = 0.5,
+  metric = "cosine", force=T
+)
+
+#--- plot embeddings
+p1 <- plotEmbedding(ArchRProj = proj, colorBy = "cellColData", name = "Clusters", embedding = "UMAP")
+#p1 <- p1 + theme_classic() + scale_color_brewer(palette = "Set2") + labs(x="UMAP1", y="UMAP2")
+
+p2 <- plotEmbedding(ArchRProj = proj, colorBy = "cellColData", name = "Sample", embedding = "UMAP", )
+#p2 <- p2 + theme_classic() + scale_color_manual(values = c("steelblue4","lightblue", "orange")) + labs(x="UMAP1", y="UMAP2")
+p1
+p2
+
+ggsave("path/to/ArchR_rerun/ArchRproject_rerun/UMAP_Clusters.png", plot = p1, width = 6, height = 5, dpi = 300)
+ggsave("path/to/ArchR_rerun/ArchRproject_rerun/UMAP_Sample.png", plot = p2, width = 6, height = 5, dpi = 300)
+
+
+```
+
+
+## Save project
+
+```{r}
+
+proj_rerun <- proj
+
+saveArchRProject(proj_rerun)
+
+```

@@ -1,0 +1,125 @@
+---
+title: "Paper plots"
+author: "Michael Scherer"
+date: "2026-01-16"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Loading the data
+
+```{r loading}
+library(Seurat)
+library(ggplot2)
+library(ComplexHeatmap)
+library(viridis)
+library(RColorBrewer)
+library(circlize)
+library(qs2)
+sample_map <- c('A549_LOY_E5b'='LOY2',
+                'A549_LOY_D11'='LOY1',
+                'A549_LOY_F10'='LOY4',
+                'A549_LOY_E6b'='LOY3',
+                'A549_WT_C1'='ROY2',
+                'A549_WT_A3'='ROY1',
+                'A549_WT_C8'='ROY3',
+                'A549_WT_D5'='ROY4')
+sample_order <- c(paste0('LOY', 1:4), paste0('ROY', 1:4))
+color_samples <- c('LOY1'='#0000C0',
+                'LOY2'='#0000C0',
+                'LOY3'='#0000C0',
+                'LOY4'='#0000C0',
+                'ROY1'='#ED7D31',
+                'ROY2'='#ED7D31',
+                'ROY3'='#ED7D31',
+                'ROY4'='#ED7D31')
+y_genes <- c('EIF1AY', 'KDM5D', 'UTY', 'DDX3Y', 'ZFY', 'PRKY', 'USP9Y')
+x_genes <- c('EIF1AX', 'KDM5C', 'TXLNG', 'PRKX', 'TBL1X')
+emt_genes <- c('VIM', 'CDH1', 'CDH2', 'EPCAM')
+seurat_obj <- readRDS('data/seurat_from_figshare.RDS')
+plot_theme <- theme(text=element_text(color='black', size=10),
+                    axis.ticks = element_line(color='black'),
+                    axis.text = element_text(color='black', size=10),
+                    axis.line.x.top = element_blank(),
+                    axis.line.y.right = element_blank(),
+                    panel.background=element_blank(),
+                    axis.line.x.bottom = element_line(),# draw bottom
+                    axis.line.y.left   = element_line())
+```
+
+```{r rename_samples}
+DimPlot(seurat_obj, group.by='sample.name', label=TRUE)+scale_color_manual(values=color_samples)+plot_theme+ggtitle("")+theme(legend.position='none')
+```
+
+```{r dot_plot}
+Idents(seurat_obj) <- 'sample.name'
+DotPlot(seurat_obj, features = c(y_genes, x_genes), scale = FALSE)+theme(axis.text.x = element_text(angle=90, hjust=1))+plot_theme  
+```
+
+```{r emt}
+emt <- read.csv('data/EMT_genes_GSEA_A549.csv',
+                header=FALSE)
+emt <- t(emt)
+colnames(emt) <- emt[1, ]
+emt <- emt[-1, ]
+seurat_obj <- AddModuleScore(seurat_obj,
+                             features=list(emt[,'enrichr_GSEA'], emt[, 'prerank_GSEA'], emt[, 'MSigDB_Hallmark_2020']),
+                             name=c("enrichr_GSEA", 'prerank_GSEA', 'MSigDB_Hallmark_2020'))
+to_plot <- seurat_obj[[]]
+to_plot$Sample <- factor(to_plot$sample.name, levels=sample_order)
+ggplot(to_plot, aes(x=Sample, y=enrichr_GSEA1, fill=Sample))+geom_boxplot()+scale_fill_manual(values=color_samples)+theme(axis.text.x = element_text(angle=90, hjust=1), text = element_text(size=16, color = 'black'))+NoLegend()+plot_theme
+```
+
+```{r emt_genes}
+FeaturePlot(seurat_obj, 'UTY')+plot_theme
+```
+
+Heatmap combining EMT genes for scATAC and scRNA-seq.
+
+```{r first_plot}
+atac_info <- read.csv('data/A549_multiome_atac.csv')
+row.names(atac_info) <- atac_info$X
+atac_info <- atac_info[order(row.names(atac_info)), ]
+atac_info <- atac_info[, -1]
+rna_data <- GetAssayData(seurat_obj, assay='RNA', layer='data')
+rna_data <- rna_data[row.names(atac_info), ]
+rna_info <- aggregate(t(rna_data), by=list(seurat_obj$sample.name), function(x)mean(x, na.rm=TRUE))
+row.names(rna_info) <- rna_info$Group.1
+rna_info <- t(rna_info[, -1])
+rna_info <- rna_info[order(row.names(rna_info)), ]
+rna_z <- apply(rna_info, 1, function(x)(x-mean(x))/sd(x))
+col_fun <- colorRamp2(
+  breaks = c(min(rna_z), -1, 0, 1, max(rna_z)),
+  colors = c("#224486", '#1414ff', "#FFFFFF", '#ff2b2b', "#862244")
+)
+rna_z <- rna_z[sample_order, ]
+#row.names(rna_z) <- sample_map[row.names(rna_z)]
+Heatmap(t(rna_z),
+    cluster_rows=FALSE,
+    cluster_columns=FALSE,
+    col=col_fun)
+dev.off()
+Heatmap(t(rna_z),
+    cluster_rows=FALSE,
+    cluster_columns=FALSE,
+    col=col_fun)
+dev.off()
+```
+
+```{r atac}
+colnames(atac_info) <- paste0('A549_', colnames(atac_info))
+colnames(atac_info) <- sample_map[colnames(atac_info)]
+Heatmap(atac_info,
+    cluster_rows=FALSE,
+    cluster_columns=FALSE,
+    col=col_fun)
+dev.off()
+Heatmap(atac_info,
+    cluster_rows=FALSE,
+    cluster_columns=FALSE,
+    col=col_fun)
+dev.off()
+```
