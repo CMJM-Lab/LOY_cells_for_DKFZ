@@ -1,0 +1,15 @@
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
+# Figure 6 runtime caches regenerated locally
+data/figure6/runtime/downloads/
+data/figure6/runtime/raw/
+data/figure6/runtime/processed/
+
+# Local execution artifacts
+*.log
+*.tmp

@@ -1,0 +1,50 @@
+{
+  "COMPARTMENT_LABELS": {
+    "LL": "Left lung",
+    "LM0_Engraft": "Engrafted",
+    "LM0_NotEngraft": "Not engrafted",
+    "Liv": "Liver",
+    "M": "Lymph node",
+    "RL": "Right lung"
+  },
+  "COMPARTMENT_ORDER_D": [
+    "LL",
+    "Liv",
+    "M",
+    "RL",
+    "LM0_Engraft",
+    "LM0_NotEngraft"
+  ],
+  "COMPARTMENT_ORDER_E": [
+    "LM0_NotEngraft",
+    "LM0_Engraft",
+    "LL",
+    "RL",
+    "M",
+    "Liv"
+  ],
+  "FigF_definition": "historical lineage-enriched LOY/ROY class from 05_Replot_new",
+  "LINEAGE_CLASS_CUTOFF": 0.6,
+  "LINEAGE_MIN_CELLS": 10,
+  "LINEAGE_MIN_CELLS_PER_SITE": 0,
+  "LINEAGE_PRIMARY_SITE": "LL",
+  "LINEAGE_SITE_RULE": "primary_only",
+  "LINEAGE_USE_MIN_CELLS_PER_SITE": false,
+  "LOY_THRESHOLD": -0.2,
+  "comp_order_D_labels": [
+    "Left lung",
+    "Liver",
+    "Lymph node",
+    "Right lung",
+    "Engrafted",
+    "Not engrafted"
+  ],
+  "comp_order_E_labels": [
+    "Not engrafted",
+    "Engrafted",
+    "Left lung",
+    "Right lung",
+    "Lymph node",
+    "Liver"
+  ]
+}

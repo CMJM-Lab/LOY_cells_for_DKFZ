@@ -1,0 +1,2 @@
+# Runtime caches are ignored by the repository-level .gitignore.
+# Keep figure-ready reference and derived files trackable in this directory.

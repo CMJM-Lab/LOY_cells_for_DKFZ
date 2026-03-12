@@ -1,0 +1,71 @@
+{
+  "file": "LeidenCluster.Merged_fill.h5ad",
+  "lm0_cells": 8632,
+  "lm0_sampleID_counts": {
+    "LM0_Engraft": 728,
+    "LM0_NotEngraft": 7904
+  },
+  "neighbors_params": {
+    "method": "umap",
+    "metric": "euclidean",
+    "n_neighbors": 15,
+    "n_pcs": 40,
+    "random_state": 0,
+    "use_rep": "X_pca_harmony"
+  },
+  "obs": {
+    "LG_Present": {
+      "n_unique": 85,
+      "values_md5": "b96470f1b07e8a890c44e89f52de2773"
+    },
+    "Leiden_Res_0.3": {
+      "n_unique": 4,
+      "values_md5": "50351e968f61724943ed22dcb616c7d9"
+    },
+    "Leiden_Res_0.6": {
+      "n_unique": 8,
+      "values_md5": "5b07fa079a416009045937a9c5665946"
+    },
+    "Leiden_Res_0.9": {
+      "n_unique": 12,
+      "values_md5": "d522ec9d49ded242fa4db53725462b5b"
+    },
+    "Leiden_Res_1.2": {
+      "n_unique": 14,
+      "values_md5": "a39c7102a757824cbbeb19bf4859e60f"
+    },
+    "Sample2": {
+      "n_unique": 6,
+      "values_md5": "edb7be6dac0d3e9b1a62977f02513cf3"
+    },
+    "dataset": {
+      "n_unique": 2,
+      "values_md5": "974a5e55b1a1daf535d62fb4b438f192"
+    },
+    "sampleID": {
+      "n_unique": 8,
+      "values_md5": "23c5318344fdb2e21d1c3271755261ed"
+    }
+  },
+  "obsm": {
+    "X_pca_harmony_md5": "d93bfc17da40e40d985bc7792ff0c1a8",
+    "X_pca_harmony_sample_md5_round6": "44fb1cc36d9224d51dce97bb469d04b8",
+    "X_umap_dist_quantiles": [
+      1.1950290365497949,
+      4.789755272811034,
+      10.748100855981598
+    ],
+    "X_umap_md5": "c5fcd03ccd225833478fa0af989b09a0"
+  },
+  "shape": [
+    43608,
+    22621
+  ],
+  "versions": {
+    "harmonypy": "0.0.10",
+    "leidenalg": "0.10.2",
+    "python-igraph": "0.11.8",
+    "scanpy": "1.11.0",
+    "umap-learn": "0.5.7"
+  }
+}
