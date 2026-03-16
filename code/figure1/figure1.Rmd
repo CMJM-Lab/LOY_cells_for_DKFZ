@@ -1,0 +1,149 @@
+---
+title: "Figure 1"
+author: "Mei-Ju May Chen (mjmchen[at]ntu.edu.tw)"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    theme: flatly
+    self_contained: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo       = TRUE,
+  message    = FALSE,
+  warning    = FALSE,
+  fig.align  = "center",
+  fig.width  = 8,
+  fig.height = 6
+)
+```
+
+## Load libraries
+
+```{r libraries}
+library(Seurat)
+library(dplyr)  
+library(tidyr)
+library(ggplot2)
+library(patchwork)
+library(openxlsx)
+library(ggpubr)
+library(RColorBrewer)
+```
+
+## Color codes
+
+```{r color-codes}
+# Plot the features and scatterplot with correlation and p-value
+major_celltype_color = c("#FC4E07","#E7B800","#00AFBB",brewer.pal(n = 9, name = "Set1")[c(4:5,7,2,8:9)], "lightblue")
+minor_celltype_color = c(brewer.pal(n=5, "Set2"), "#E7B800", brewer.pal(n=4, "Set1")) 
+```
+
+## Load data
+
+```{r load-data}
+rds_path <- "data-to-path"
+ob <- readRDS(rds_path)
+# Quick overview
+ob
+```
+
+
+------------------------------------------------------------------------
+
+## Figure 1C
+
+```{r fig1c, fig.cap="Figure 1C"}
+labels = rev(levels(factor(as.vector(ob$Cell.Type.L2))))
+ob$Cell.Type.L2 = factor(ob$Cell.Type.L2, levels = labels[c(1:2,6,3:5,7:10)])
+DimPlot(ob, group.by = "Cell.Type.L2") + scale_color_manual(values = major_celltype_color) +
+  DimPlot(ob, group.by = "donor")  
+```
+
+------------------------------------------------------------------------
+
+## Figure 1D
+
+```{r fig1d, fig.cap="Figure 1D"}
+ob_disease <- SplitObject(ob, split.by = "Sample.type")
+features = c("RPS4Y1", "EIF1AY", "USP9Y",  "UTY",    "KDM5D",  "RPS4X",  "USP9X",  "EIF1AX", "KDM6A",  "KDM5C",  "RPLP0")
+a = rev(levels(ob$Sample.type))[1]
+#for(a in rev(levels(ob$Sample.type))){
+  ob_list = list()
+  ob_list <- SplitObject(ob_disease[[a]], split.by = "donor")
+  dotplots <- list()
+  orderlist = names(ob_list)
+  orderlist = rev(orderlist)
+  # Iterate through each split object and create a DotPlot
+  dotplots=list()
+  for (i in orderlist) {
+    # Create DotPlot for the current split object
+    # Create DotPlot for the current split object
+    # Add cell counts to Cell.Type labels
+    ob_list[[i]]@meta.data$Cell.Type.L2
+    cell_counts <- ob_list[[i]]@meta.data %>%
+      group_by(Cell.Type.L2) %>%
+      summarise(count = n()) %>%
+      mutate(Cell.Type.L2 = paste0(Cell.Type.L2, " (N=", count, ")"))
+    
+    # Update the Cell.Type factor levels in the metadata
+    levels(ob_list[[i]]@meta.data$Cell.Type.L2) = cell_counts$Cell.Type.L2
+    ob_list[[i]]@meta.data$Cell.Type.L2 = factor(ob_list[[i]]@meta.data$Cell.Type.L2, levels = rev(levels(ob_list[[i]]@meta.data$Cell.Type.L2)))
+    # Create DotPlot with updated Cell.Type labels
+    p <- DotPlot(ob_list[[i]], features = features, group.by = "Cell.Type.L2", scale = F, 
+                    col.min = 0, dot.min = 0) +
+      theme(
+        axis.text.x = element_text(angle = 90, hjust = 1),
+        strip.background = element_blank(),
+        strip.text = element_text(size = 8)
+      )       
+    
+    # Store the plot in the list
+    dotplots[[i]] <- p
+  }
+  # Combine all DotPlots into one plot layout
+  combined_plot <- wrap_plots(dotplots, nrow=4)
+  # Save the combined plot as a PDF
+  #pdf(file = file.path(resPath, paste0("F22_DotPlot_", a, ".pdf")), width = 8, height = 12)
+  print(combined_plot)
+  #dev.off()
+#}
+
+```
+
+------------------------------------------------------------------------
+
+## Figure 1E
+
+```{r fig1e, fig.cap="Figure 1E"}
+ob_loy = SplitObject(ob, split.by = "LOY.status")
+x_limits <- c(-0.4,0.9)
+# Save the RidgePlot for ROY as a PDF
+# pdf(file = file.path(resPath, "F23_RidgePlot_Y_Score1_ROY.pdf"), width = 12, height = 5)
+RidgePlot(ob_loy[["ROY"]], features = "Y.score", group.by = "Cell.Type.L2") +
+  scale_fill_manual(values = alpha(major_celltype_color, 0.5)) +
+  xlim(x_limits) + 
+  NoLegend()
+# dev.off()
+
+# Save the RidgePlot for LOY as a PDF
+#pdf(file = file.path(resPath, "F24_RidgePlot_Y_Score1_LOY.pdf"), width = 12, height = 5)
+RidgePlot(ob_loy[["LOY"]], features = "Y.score", group.by = "Cell.Type.L2") +
+  scale_fill_manual(values = alpha(major_celltype_color, 0.5)) +
+  xlim(x_limits) + 
+  NoLegend()
+#dev.off()
+
+```
+
+------------------------------------------------------------------------
+
+## Session info
+
+```{r session-info}
+sessionInfo()
+```
