@@ -985,4 +985,3 @@ dependencies:
       - werkzeug==3.1.3
       - xsdata==24.3.1
       - zipdist==0.1.5
-prefix: /home/kuinochi/miniconda3/envs/sc-py

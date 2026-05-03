@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Iterable, Optional, Sequence, Tuple
+from typing import Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -113,6 +113,171 @@ def fisher_pairwise_vs_reference(
         }
 
     return pd.DataFrame(results).T
+
+
+def build_s6h_clone_enrichment_table(
+    obs: pd.DataFrame,
+    *,
+    lineage_key: str = "LineageGroup",
+    site_key: str = "Sample2",
+    label_key: str = "Y_group",
+    tree_key: str = "TreeMetRate",
+    dataset_key: str = "dataset",
+    dataset_value: str = "M5k",
+    exclude_lineage_groups: Optional[Sequence[object]] = None,
+    exclude_site_prefix: str = "LM0",
+    min_cells_per_site: int = 20,
+    enrich_pct: float = 0.75,
+    weak_cutoff: float = 0.001,
+    high_cutoff: float = 0.008,
+    tree_summary: str = "median",
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """Build the canonical Figure S6H clone-level enrichment table.
+
+    Returns `(site_counts_eligible, clone_enriched)` where `clone_enriched`
+    contains one row per clone with LOY/ROY enrichment, clone-level TreeMetRate,
+    and metastatic phenotype assignments.
+    """
+    required = [lineage_key, site_key, label_key, tree_key, dataset_key]
+    missing = [c for c in required if c not in obs.columns]
+    if missing:
+        raise KeyError(f"Missing required columns: {missing}")
+
+    df = obs[required].copy()
+    df = df[df[dataset_key].astype(str) == str(dataset_value)]
+    df[lineage_key] = df[lineage_key].astype(str)
+    df[site_key] = df[site_key].astype(str)
+
+    if exclude_lineage_groups:
+        excluded = {str(x) for x in exclude_lineage_groups}
+        df = df[~df[lineage_key].isin(excluded)]
+    if exclude_site_prefix:
+        df = df[~df[site_key].str.startswith(str(exclude_site_prefix))]
+
+    site_counts = (
+        df.groupby([lineage_key, site_key, label_key], observed=False)
+        .size()
+        .unstack(fill_value=0)
+    )
+    for col in ("LOY", "ROY"):
+        if col not in site_counts.columns:
+            site_counts[col] = 0
+    site_counts = site_counts[["LOY", "ROY"]]
+    site_counts["n_total"] = site_counts["LOY"] + site_counts["ROY"]
+    site_counts["loy_frac"] = site_counts["LOY"] / site_counts["n_total"].replace(0, np.nan)
+    site_counts["roy_frac"] = site_counts["ROY"] / site_counts["n_total"].replace(0, np.nan)
+    site_counts_eligible = site_counts[site_counts["n_total"] >= min_cells_per_site].copy()
+
+    def _classify_clone_enrichment(sub: pd.DataFrame) -> Union[float, str]:
+        if sub.empty:
+            return np.nan
+        lf = sub["loy_frac"].to_numpy(dtype=float)
+        rf = sub["roy_frac"].to_numpy(dtype=float)
+        if np.all(lf >= enrich_pct):
+            return "LOY"
+        if np.all(rf >= enrich_pct):
+            return "ROY"
+        return "Mixed"
+
+    clone_enriched = (
+        site_counts_eligible.groupby(level=0, observed=False)
+        .apply(_classify_clone_enrichment)
+        .rename("enriched")
+        .to_frame()
+    )
+    clone_enriched["n_sites_eligible"] = site_counts_eligible.groupby(level=0, observed=False).size()
+    clone_enriched = clone_enriched.dropna(subset=["enriched"])
+
+    if tree_summary == "median":
+        clone_tree = df.groupby(lineage_key, observed=False)[tree_key].median()
+    elif tree_summary == "mean":
+        clone_tree = df.groupby(lineage_key, observed=False)[tree_key].mean()
+    else:
+        raise ValueError("tree_summary must be 'median' or 'mean'")
+
+    clone_enriched = clone_enriched.join(clone_tree.rename(tree_key), how="left")
+
+    def _metapheno(value: float) -> str:
+        if value >= high_cutoff:
+            return "Highly metastatic"
+        if value >= weak_cutoff:
+            return "Weakly metastatic"
+        return "Non metastatic"
+
+    clone_enriched["metastatic_phenotype"] = (
+        clone_enriched[tree_key].fillna(0).map(_metapheno)
+    )
+    clone_enriched = clone_enriched[clone_enriched["enriched"].isin(["LOY", "ROY"])].copy()
+
+    return site_counts_eligible, clone_enriched
+
+
+def summarize_s6h_clone_phenotypes(
+    clone_enriched: pd.DataFrame,
+    *,
+    enriched_key: str = "enriched",
+    phenotype_key: str = "metastatic_phenotype",
+    enriched_order: Sequence[str] = ("LOY", "ROY"),
+    phenotype_order: Sequence[str] = (
+        "Non metastatic",
+        "Weakly metastatic",
+        "Highly metastatic",
+    ),
+) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Summarize Figure S6H clone phenotypes and run convenience Fisher tests."""
+    summary = (
+        clone_enriched.groupby([enriched_key, phenotype_key], observed=False)
+        .size()
+        .unstack(fill_value=0)
+    )
+    for phenotype in phenotype_order:
+        if phenotype not in summary.columns:
+            summary[phenotype] = 0
+    summary = summary.reindex(index=list(enriched_order), fill_value=0)
+    summary = summary[list(phenotype_order)]
+
+    pct = summary.div(summary.sum(axis=1).replace(0, np.nan), axis=0) * 100
+
+    hi_loy = int(summary.loc["LOY", "Highly metastatic"]) if "LOY" in summary.index else 0
+    hi_roy = int(summary.loc["ROY", "Highly metastatic"]) if "ROY" in summary.index else 0
+    tot_loy = int(summary.loc["LOY"].sum()) if "LOY" in summary.index else 0
+    tot_roy = int(summary.loc["ROY"].sum()) if "ROY" in summary.index else 0
+    table_hi = [[hi_loy, tot_loy - hi_loy], [hi_roy, tot_roy - hi_roy]]
+    odds_hi, p_hi = fisher_exact(table_hi)
+
+    met_loy = (
+        int(summary.loc["LOY", "Weakly metastatic"] + summary.loc["LOY", "Highly metastatic"])
+        if "LOY" in summary.index
+        else 0
+    )
+    met_roy = (
+        int(summary.loc["ROY", "Weakly metastatic"] + summary.loc["ROY", "Highly metastatic"])
+        if "ROY" in summary.index
+        else 0
+    )
+    non_loy = int(summary.loc["LOY", "Non metastatic"]) if "LOY" in summary.index else 0
+    non_roy = int(summary.loc["ROY", "Non metastatic"]) if "ROY" in summary.index else 0
+    table_any = [[met_loy, non_loy], [met_roy, non_roy]]
+    odds_any, p_any = fisher_exact(table_any)
+
+    fisher_rows = pd.DataFrame(
+        [
+            {
+                "test": "Highly_vs_Others",
+                "odds_ratio": float(odds_hi),
+                "p_value": float(p_hi),
+                "table": table_hi,
+            },
+            {
+                "test": "AnyMet_vs_Non",
+                "odds_ratio": float(odds_any),
+                "p_value": float(p_any),
+                "table": table_any,
+            },
+        ]
+    )
+
+    return summary, pct, fisher_rows
 
 
 def plot_score_correlation(
