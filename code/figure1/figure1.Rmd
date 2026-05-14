@@ -33,6 +33,8 @@ library(patchwork)
 library(openxlsx)
 library(ggpubr)
 library(RColorBrewer)
+library(maftools)
+library(forestploter)
 ```
 
 ## Color codes
@@ -138,6 +140,82 @@ RidgePlot(ob_loy[["LOY"]], features = "Y.score", group.by = "Cell.Type.L2") +
   NoLegend()
 #dev.off()
 
+```
+
+------------------------------------------------------------------------
+
+## Figure 1F
+
+```{r fig1f, fig.cap="oncoplot"}
+# Paths (point these to the TCGA / DKFZ multi-omics directory)
+dataPath <- "data-to-path"
+resPath  <- "data-to-path"
+
+cancer <- "LUAD"
+
+# `kdm` comes from gene_info.rda;
+# `male.maf` (TCGA + DKFZ male MAF, 99 genes, hg38) comes from the second .rda.
+load(file.path(resPath, "gene_info.rda"))
+load(file.path(resPath, "male.maf.tcga.dkfz_99genes_combined.hg38.rda"))
+
+# Driver genes (IntOGen) and the combined gene list used downstream
+driver_genes = read.csv(file.path(dataPath, paste0("IntOGen-DriverGenes_", cancer, ".tsv")), sep = "\t")
+driver_genes = driver_genes[order(driver_genes$Samples...., decreasing = T),]
+combined_genes = driver_genes$Symbol[driver_genes$Cohorts>=1]
+
+# Y status (LOY / ROY) per sample, restricted to the cancer of interest
+y_status <- read.csv(file.path(dataPath, "TCGA_Y_status_lung.csv"),
+                     header = TRUE, row.names = 1)
+y_status <- y_status[y_status$Cohort == cancer, ]
+
+# Split MAF by major Y status
+loy.maf <- subsetMaf(male.maf,
+                     tsb = male.maf@clinical.data$Tumor_Sample_Barcode[
+                       male.maf@clinical.data$Major_Y_status == "LOY"])
+roy.maf <- subsetMaf(male.maf,
+                     tsb = male.maf@clinical.data$Tumor_Sample_Barcode[
+                       male.maf@clinical.data$Major_Y_status == "ROY"])
+
+# Differential mutation test LOY vs ROY
+pt.vs.rt <- mafCompare(
+  loy.maf, roy.maf, useCNV = FALSE,
+  m1Name = paste0(cancer, "-", paste(names(table(loy.maf@clinical.data$Y_status)), collapse = "/")),
+  m2Name = paste0(cancer, "-", paste(names(table(roy.maf@clinical.data$Y_status)), collapse = "/")),
+  minMut = 5
+)
+
+data <- pt.vs.rt$results[pt.vs.rt$results$pval < 0.1, ]
+data <- data[data$Hugo_Symbol %in% c(driver_genes$Symbol, kdm$Approved.symbol)]
+data <- data[order(data$pval, decreasing = FALSE), ]
+pt.vs.rt$results <- data
+
+# co-Oncoplot: LOY vs ROY
+graphics.off() # Reset all devices
+n <- 1
+pdf(file = file.path(resPath, paste0("coOncoplot_", cancer, "_LOY_vs_ROY.pdf")), width = 12, height = 10)
+coOncoplot(m1 = loy.maf, m2 = roy.maf, genes = combined_genes[1:30],
+           m1Name = paste0(cancer, "-LOY"),
+           m2Name = paste0(cancer, "-ROY"),
+           clinicalFeatures1 = "Cohort",
+           clinicalFeatures2 = "Cohort",
+           removeNonMutated  = FALSE,
+           anno_height       = 1.4,    # Extremely small to ensure vertical space
+           #showSampleNames  = FALSE,
+           #gene_mar         = 4,
+           titleFontSize      = n * 1.5,
+           annotationFontSize = n * 1.5,
+           geneNamefont       = n,     # Tiny font for genes
+           legendFontSize     = n * 1.5, # Tiny legends
+           sortByAnnotation1  = TRUE,
+           sortByAnnotation2  = TRUE)
+dev.off()
+
+# Companion forest plot (kept here for future panel; not part of Figure 1F)
+n <- 0.8
+pdf(file = file.path(resPath, paste0("forestPlot_", cancer, "_LOY_vs_ROY.pdf")), width = 6, height = 2.5)
+forestPlot(mafCompareRes = pt.vs.rt, pVal = 0.05,
+           geneFontSize = n, titleSize = n, lineWidth = 2)
+dev.off()
 ```
 
 ------------------------------------------------------------------------
