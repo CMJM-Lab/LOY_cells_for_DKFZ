@@ -13,3 +13,6 @@ data/figure6/runtime/processed/
 # Local execution artifacts
 *.log
 *.tmp
+
+# macOS
+.DS_Store
